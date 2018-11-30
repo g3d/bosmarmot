@@ -148,8 +148,12 @@ var SolidityFunction = function (abi) {
           } catch (e) {
             return reject(e)
           }
-        }
+	}
 
+        // Added during rebase for backward compatibility
+        returnObj.tx_hash = result.Receipt.TxHash.toString('hex').toUpperCase()
+        returnObj.gas_used = result.Result.GasUsed
+        returnObj.return = utils.web3ToBurrow(decodeF(abi, result.Result.Return, self.objectReturn)).values
         // Meta Data (address, caller, height, etc)
         returnObj.contractAddress = result.Receipt.ContractAddress.toString('hex').toUpperCase()
         returnObj.height = result.Height
