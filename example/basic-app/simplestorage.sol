@@ -1,5 +1,3 @@
-pragma solidity ^0.4.24;
-
 contract simplestorage {
     uint public storedData;
 
@@ -11,7 +9,7 @@ contract simplestorage {
         storedData = value;
     }
 
-    function get() public constant returns (uint value) {
+    function get() public view returns (uint value) {
         return storedData;
     }
 

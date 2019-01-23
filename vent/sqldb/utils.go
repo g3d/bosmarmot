@@ -1,144 +1,214 @@
 package sqldb
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 
+	"encoding/json"
+
 	"github.com/monax/bosmarmot/vent/types"
 )
 
-// findDefaultSchema checks if the default schema exists in SQL database
-func (db *SQLDB) findDefaultSchema() (bool, error) {
-	var found bool
-
-	query := db.DBAdapter.FindSchemaQuery()
-
-	db.Log.Debug("msg", "FIND SCHEMA", "query", clean(query))
-	err := db.DB.QueryRow(query).Scan(&found)
-	if err == nil {
-		if !found {
-			db.Log.Warn("msg", "Schema not found")
-		}
-	} else {
-		db.Log.Debug("msg", "Error searching schema", "err", err)
-	}
-
-	return found, err
-}
-
-// createDefaultSchema creates the default schema in SQL database
-func (db *SQLDB) createDefaultSchema() error {
-	db.Log.Info("msg", "Creating schema")
-
-	query := db.DBAdapter.CreateSchemaQuery()
-
-	db.Log.Debug("msg", "CREATE SCHEMA", "query", clean(query))
-	_, err := db.DB.Exec(query)
-	if err != nil {
-		if db.DBAdapter.ErrorEquals(err, types.SQLErrorTypeDuplicatedSchema) {
-			db.Log.Warn("msg", "Duplicated schema")
-			return nil
-		}
-	}
-	return err
-}
-
 // findTable checks if a table exists in the default schema
 func (db *SQLDB) findTable(tableName string) (bool, error) {
-	found := false
+
+	found := 0
 	safeTable := safe(tableName)
-	query := db.DBAdapter.FindTableQuery(safeTable)
+	query := clean(db.DBAdapter.FindTableQuery())
 
-	db.Log.Debug("msg", "FIND TABLE", "query", clean(query), "value", safeTable)
-	err := db.DB.QueryRow(query).Scan(&found)
-
-	if err == nil {
-		if !found {
-			db.Log.Warn("msg", "Table not found", "value", safeTable)
-		}
-	} else {
-		db.Log.Debug("msg", "Error finding table", "err", err)
+	db.Log.Info("msg", "FIND TABLE", "query", query, "value", safeTable)
+	if err := db.DB.QueryRow(query, tableName).Scan(&found); err != nil {
+		db.Log.Info("msg", "Error finding table", "err", err)
+		return false, err
 	}
 
-	return found, err
+	if found == 0 {
+		db.Log.Warn("msg", "Table not found", "value", safeTable)
+		return false, nil
+	}
+
+	return true, nil
 }
 
-// getLogTableDef returns log structures
-func (db *SQLDB) getLogTableDef() types.EventTables {
-	tables := make(types.EventTables)
-	logCol := make(map[string]types.SQLTableColumn)
+// getSysTablesDefinition returns log, chain info & dictionary structures
+func (db *SQLDB) getSysTablesDefinition() types.EventTables {
 
-	logCol["id"] = types.SQLTableColumn{
-		Name:    "id",
+	tables := make(types.EventTables)
+	dicCol := make(map[string]types.SQLTableColumn)
+	logCol := make(map[string]types.SQLTableColumn)
+	chainCol := make(map[string]types.SQLTableColumn)
+
+	// log table
+	logCol[types.SQLColumnLabelId] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelId,
 		Type:    types.SQLColumnTypeSerial,
 		Primary: true,
 		Order:   1,
 	}
 
-	logCol["timestamp"] = types.SQLTableColumn{
-		Name:    "timestamp",
+	logCol[types.SQLColumnLabelTimeStamp] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelTimeStamp,
 		Type:    types.SQLColumnTypeTimeStamp,
 		Primary: false,
 		Order:   2,
 	}
 
-	logCol["registers"] = types.SQLTableColumn{
-		Name:    "registers",
-		Type:    types.SQLColumnTypeInt,
+	logCol[types.SQLColumnLabelTableName] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelTableName,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  100,
 		Primary: false,
 		Order:   3,
 	}
 
-	logCol["height"] = types.SQLTableColumn{
-		Name:    "height",
+	logCol[types.SQLColumnLabelEventName] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelEventName,
 		Type:    types.SQLColumnTypeVarchar,
 		Length:  100,
 		Primary: false,
 		Order:   4,
 	}
 
-	tables["log"] = types.SQLTable{
-		Name:    "_bosmarmot_log",
-		Columns: logCol,
+	logCol[types.SQLColumnLabelEventFilter] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelEventFilter,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  100,
+		Primary: false,
+		Order:   5,
 	}
 
-	detCol := make(map[string]types.SQLTableColumn)
+	logCol[types.SQLColumnLabelHeight] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelHeight,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  100,
+		Primary: false,
+		Order:   6,
+	}
 
-	detCol["id"] = types.SQLTableColumn{
-		Name:    "id",
-		Type:    types.SQLColumnTypeInt,
+	logCol[types.SQLColumnLabelTxHash] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelTxHash,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  40,
+		Primary: false,
+		Order:   7,
+	}
+
+	logCol[types.SQLColumnLabelAction] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelAction,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  20,
+		Primary: false,
+		Order:   8,
+	}
+
+	logCol[types.SQLColumnLabelDataRow] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelDataRow,
+		Type:    types.SQLColumnTypeJSON,
+		Length:  0,
+		Primary: false,
+		Order:   9,
+	}
+
+	logCol[types.SQLColumnLabelSqlStmt] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelSqlStmt,
+		Type:    types.SQLColumnTypeText,
+		Length:  0,
+		Primary: false,
+		Order:   10,
+	}
+
+	logCol[types.SQLColumnLabelSqlValues] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelSqlValues,
+		Type:    types.SQLColumnTypeText,
+		Length:  0,
+		Primary: false,
+		Order:   11,
+	}
+
+	// dictionary table
+	dicCol[types.SQLColumnLabelTableName] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelTableName,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  100,
 		Primary: true,
 		Order:   1,
 	}
 
-	detCol["tableName"] = types.SQLTableColumn{
-		Name:    "tblname",
+	dicCol[types.SQLColumnLabelColumnName] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelColumnName,
 		Type:    types.SQLColumnTypeVarchar,
 		Length:  100,
 		Primary: true,
 		Order:   2,
 	}
 
-	detCol["tableMap"] = types.SQLTableColumn{
-		Name:    "tblmap",
-		Type:    types.SQLColumnTypeVarchar,
-		Length:  100,
-		Primary: true,
+	dicCol[types.SQLColumnLabelColumnType] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelColumnType,
+		Type:    types.SQLColumnTypeInt,
+		Length:  0,
+		Primary: false,
 		Order:   3,
 	}
 
-	detCol["registers"] = types.SQLTableColumn{
-		Name:    "registers",
+	dicCol[types.SQLColumnLabelColumnLength] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelColumnLength,
 		Type:    types.SQLColumnTypeInt,
+		Length:  0,
 		Primary: false,
 		Order:   4,
 	}
 
-	tables["detail"] = types.SQLTable{
-		Name:    "_bosmarmot_logdet",
-		Columns: detCol,
+	dicCol[types.SQLColumnLabelPrimaryKey] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelPrimaryKey,
+		Type:    types.SQLColumnTypeInt,
+		Length:  0,
+		Primary: false,
+		Order:   5,
+	}
+
+	dicCol[types.SQLColumnLabelColumnOrder] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelColumnOrder,
+		Type:    types.SQLColumnTypeInt,
+		Length:  0,
+		Primary: false,
+		Order:   6,
+	}
+
+	// chain info table
+	chainCol[types.SQLColumnLabelChainID] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelChainID,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  100,
+		Primary: true,
+		Order:   1,
+	}
+
+	chainCol[types.SQLColumnLabelBurrowVer] = types.SQLTableColumn{
+		Name:    types.SQLColumnLabelBurrowVer,
+		Type:    types.SQLColumnTypeVarchar,
+		Length:  100,
+		Primary: false,
+		Order:   2,
+	}
+
+	// add tables
+	//log
+	tables[types.SQLLogTableName] = types.SQLTable{
+		Name:    types.SQLLogTableName,
+		Columns: logCol,
+	}
+
+	//dictionary
+	tables[types.SQLDictionaryTableName] = types.SQLTable{
+		Name:    types.SQLDictionaryTableName,
+		Columns: dicCol,
+	}
+
+	//chain info
+	tables[types.SQLChainInfoTableName] = types.SQLTable{
+		Name:    types.SQLChainInfoTableName,
+		Columns: chainCol,
 	}
 
 	return tables
@@ -146,6 +216,7 @@ func (db *SQLDB) getLogTableDef() types.EventTables {
 
 // getTableDef returns the structure of a given SQL table
 func (db *SQLDB) getTableDef(tableName string) (types.SQLTable, error) {
+
 	var table types.SQLTable
 
 	safeTable := safe(tableName)
@@ -156,17 +227,17 @@ func (db *SQLDB) getTableDef(tableName string) (types.SQLTable, error) {
 	}
 
 	if !found {
-		db.Log.Debug("msg", "Error table not found", "value", safeTable)
+		db.Log.Info("msg", "Error table not found", "value", safeTable)
 		return table, errors.New("Error table not found " + safeTable)
 	}
 
 	table.Name = safeTable
-	query := db.DBAdapter.TableDefinitionQuery(safeTable)
+	query := clean(db.DBAdapter.TableDefinitionQuery())
 
-	db.Log.Debug("msg", "QUERY STRUCTURE", "query", clean(query), "value", safeTable)
-	rows, err := db.DB.Query(query)
+	db.Log.Info("msg", "QUERY STRUCTURE", "query", query, "value", safeTable)
+	rows, err := db.DB.Query(query, safeTable)
 	if err != nil {
-		db.Log.Debug("msg", "Error querying table structure", "err", err)
+		db.Log.Info("msg", "Error querying table structure", "err", err)
 		return table, err
 	}
 	defer rows.Close()
@@ -175,15 +246,14 @@ func (db *SQLDB) getTableDef(tableName string) (types.SQLTable, error) {
 	i := 0
 
 	for rows.Next() {
-		i++
 		var columnName string
 		var columnSQLType types.SQLColumnType
-		var columnIsPK bool
+		var columnIsPK int
 		var columnLength int
 		var column types.SQLTableColumn
 
-		if err = rows.Scan(&columnName, &columnSQLType, &columnIsPK, &columnLength); err != nil {
-			db.Log.Debug("msg", "Error scanning table structure", "err", err)
+		if err = rows.Scan(&columnName, &columnSQLType, &columnLength, &columnIsPK); err != nil {
+			db.Log.Info("msg", "Error scanning table structure", "err", err)
 			return table, err
 		}
 
@@ -191,22 +261,18 @@ func (db *SQLDB) getTableDef(tableName string) (types.SQLTable, error) {
 			return table, err
 		}
 
-		column.Order = i
 		column.Name = columnName
-		column.Primary = columnIsPK
 		column.Type = columnSQLType
-
-		if column.Type == types.SQLColumnTypeVarchar {
-			column.Length = columnLength
-		} else {
-			column.Length = 0
-		}
+		column.Length = columnLength
+		column.Primary = columnIsPK == 1
+		column.Order = i
 
 		columns[columnName] = column
+		i++
 	}
 
 	if err = rows.Err(); err != nil {
-		db.Log.Debug("msg", "Error during rows iteration", "err", err)
+		db.Log.Info("msg", "Error during rows iteration", "err", err)
 		return table, err
 	}
 
@@ -214,17 +280,22 @@ func (db *SQLDB) getTableDef(tableName string) (types.SQLTable, error) {
 	return table, nil
 }
 
-// alterTable alters the structure of a SQL table
-func (db *SQLDB) alterTable(newTable types.SQLTable) error {
+// alterTable alters the structure of a SQL table & add info to the dictionary
+func (db *SQLDB) alterTable(newTable types.SQLTable, eventName string) error {
+
 	db.Log.Info("msg", "Altering table", "value", newTable.Name)
 
-	safeTable := safe(newTable.Name)
+	// prepare log query
+	logQuery := clean(db.DBAdapter.InsertLogQuery())
 
 	// current table structure
+	safeTable := safe(newTable.Name)
 	currentTable, err := db.getTableDef(safeTable)
 	if err != nil {
 		return err
 	}
+
+	sqlValues, _ := db.getJSON(nil)
 
 	// for each column in the new table structure
 	for _, newColumn := range newTable.Columns {
@@ -241,16 +312,43 @@ func (db *SQLDB) alterTable(newTable types.SQLTable) error {
 
 		if !found {
 			safeCol := safe(newColumn.Name)
-			query := db.DBAdapter.AlterColumnQuery(safeTable, safeCol, newColumn.Type)
+			query, dictionary := db.DBAdapter.AlterColumnQuery(safeTable, safeCol, newColumn.Type, newColumn.Length, newColumn.Order)
 
-			db.Log.Debug("msg", "ALTER TABLE", "query", clean(query))
-			_, err = db.DB.Exec(query)
+			//alter column
+			db.Log.Info("msg", "ALTER TABLE", "query", safe(query))
+			_, err = db.DB.Exec(safe(query))
+
 			if err != nil {
 				if db.DBAdapter.ErrorEquals(err, types.SQLErrorTypeDuplicatedColumn) {
 					db.Log.Warn("msg", "Duplicate column", "value", safeCol)
 				} else {
-					db.Log.Debug("msg", "Error altering table", "err", err)
+					db.Log.Info("msg", "Error altering table", "err", err)
 					return err
+				}
+			} else {
+				//store dictionary
+				db.Log.Info("msg", "STORE DICTIONARY", "query", clean(dictionary))
+				_, err = db.DB.Exec(dictionary)
+				if err != nil {
+					db.Log.Info("msg", "Error storing  dictionary", "err", err)
+					return err
+				}
+
+				//insert log (if action is not database initialization)
+				if eventName != string(types.ActionInitialize) {
+					// Marshal the table into a JSON string.
+					var jsonData []byte
+					jsonData, err = db.getJSON(newColumn)
+					if err != nil {
+						db.Log.Info("msg", "error marshaling column", "err", err, "value", fmt.Sprintf("%v", newColumn))
+						return err
+					}
+					//insert log
+					_, err = db.DB.Exec(logQuery, newTable.Name, eventName, newTable.Filter, nil, nil, types.ActionAlterTable, jsonData, query, sqlValues)
+					if err != nil {
+						db.Log.Info("msg", "Error inserting log", "err", err)
+						return err
+					}
 				}
 			}
 		}
@@ -258,138 +356,148 @@ func (db *SQLDB) alterTable(newTable types.SQLTable) error {
 	return nil
 }
 
-// getSelectQuery builds a select query for a specific SQL table
+// getSelectQuery builds a select query for a specific SQL table and a given block
 func (db *SQLDB) getSelectQuery(table types.SQLTable, height string) (string, error) {
+
 	fields := ""
 
 	for _, tableColumn := range table.Columns {
-		colName := tableColumn.Name
-
 		if fields != "" {
 			fields += ", "
 		}
-		fields += colName
+		fields += db.DBAdapter.SecureColumnName(tableColumn.Name)
 	}
 
 	if fields == "" {
 		return "", errors.New("error table does not contain any fields")
 	}
 
-	query := db.DBAdapter.SelectRowQuery(table.Name, fields, height)
+	query := clean(db.DBAdapter.SelectRowQuery(table.Name, fields, height))
 	return query, nil
 }
 
-// createTable creates a new table in the default schema
-func (db *SQLDB) createTable(table types.SQLTable) error {
+// createTable creates a new table
+func (db *SQLDB) createTable(table types.SQLTable, eventName string) error {
+
 	db.Log.Info("msg", "Creating Table", "value", table.Name)
 
-	safeTable := safe(table.Name)
+	// prepare log query
+	logQuery := clean(db.DBAdapter.InsertLogQuery())
 
 	// sort columns
-	sortedColumns := make([]types.SQLTableColumn, len(table.Columns))
+	columns := len(table.Columns)
+	sortedColumns := make([]types.SQLTableColumn, columns)
 	for _, tableColumn := range table.Columns {
-		sortedColumns[tableColumn.Order-1] = tableColumn
+		if tableColumn.Order <= 0 {
+			db.Log.Info("msg", "column_order <=0")
+			return fmt.Errorf("table definition error,%s has column_order <=0 (minimum value = 1)", tableColumn.Name)
+		} else if tableColumn.Order-1 > columns {
+			db.Log.Info("msg", "column_order > total_columns")
+			return fmt.Errorf("table definition error, %s has column_order > total_columns", tableColumn.Name)
+		} else if sortedColumns[tableColumn.Order-1].Order != 0 {
+			db.Log.Info("msg", "duplicated column_oder")
+			return fmt.Errorf("table definition error, %s and %s have duplicated column_order", sortedColumns[tableColumn.Order-1].Name, tableColumn.Name)
+		} else {
+			sortedColumns[tableColumn.Order-1] = tableColumn
+		}
 	}
 
-	query := db.DBAdapter.CreateTableQuery(safeTable, sortedColumns)
+	//get create table query
+	safeTable := safe(table.Name)
+	query, dictionary := db.DBAdapter.CreateTableQuery(safeTable, sortedColumns)
 	if query == "" {
-		db.Log.Debug("msg", "empty CREATE TABLE query")
+		db.Log.Info("msg", "empty CREATE TABLE query")
 		return errors.New("empty CREATE TABLE query")
 	}
 
 	// create table
-	db.Log.Debug("msg", "CREATE TABLE", "query", clean(query))
+	db.Log.Info("msg", "CREATE TABLE", "query", clean(query))
 	_, err := db.DB.Exec(query)
 	if err != nil {
-		if db.DBAdapter.ErrorEquals(err, types.SQLErrorTypeDuplicatedColumn) {
+		if db.DBAdapter.ErrorEquals(err, types.SQLErrorTypeDuplicatedTable) {
 			db.Log.Warn("msg", "Duplicate table", "value", safeTable)
 			return nil
 
 		} else if db.DBAdapter.ErrorEquals(err, types.SQLErrorTypeInvalidType) {
-			db.Log.Debug("msg", "Error creating table, invalid datatype", "err", err)
+			db.Log.Info("msg", "Error creating table, invalid datatype", "err", err)
 			return err
 
 		}
-		db.Log.Debug("msg", "Error creating table", "err", err)
+		db.Log.Info("msg", "Error creating table", "err", err)
 		return err
 	}
 
+	//store dictionary
+	db.Log.Info("msg", "STORE DICTIONARY", "query", clean(dictionary))
+	_, err = db.DB.Exec(dictionary)
+	if err != nil {
+		db.Log.Info("msg", "Error storing  dictionary", "err", err)
+		return err
+	}
+
+	//insert log (if action is not database initialization)
+	if eventName != string(types.ActionInitialize) {
+
+		// Marshal the table into a JSON string.
+		var jsonData []byte
+		jsonData, err = db.getJSON(table)
+		if err != nil {
+			db.Log.Info("msg", "error marshaling table", "err", err, "value", fmt.Sprintf("%v", table))
+			return err
+		}
+		sqlValues, _ := db.getJSON(nil)
+
+		//insert log
+		_, err = db.DB.Exec(logQuery, table.Name, eventName, table.Filter, nil, nil, types.ActionCreateTable, jsonData, query, sqlValues)
+		if err != nil {
+			db.Log.Info("msg", "Error inserting log", "err", err)
+			return err
+		}
+	}
 	return nil
 }
 
-// getBlockTables return all SQL tables that had been involved
-// in a given batch transaction for a specific block id
+// getBlockTables return all SQL tables that have been involved
+// in a given batch transaction for a specific block
 func (db *SQLDB) getBlockTables(block string) (types.EventTables, error) {
+
 	tables := make(types.EventTables)
 
-	query := db.DBAdapter.SelectLogQuery()
-	db.Log.Debug("msg", "QUERY LOG", "query", clean(query), "value", block)
+	query := clean(db.DBAdapter.SelectLogQuery())
+	db.Log.Info("msg", "QUERY LOG", "query", query, "value", block)
+
 	rows, err := db.DB.Query(query, block)
 	if err != nil {
-		db.Log.Debug("msg", "Error querying log", "err", err)
+		db.Log.Info("msg", "Error querying log", "err", err)
 		return tables, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var tblMap string
-		var tblName string
+		var eventName, tableName string
 		var table types.SQLTable
 
-		err = rows.Scan(&tblName, &tblMap)
+		err = rows.Scan(&tableName, &eventName)
 		if err != nil {
-			db.Log.Debug("msg", "Error scanning table structure", "err", err)
+			db.Log.Info("msg", "Error scanning table structure", "err", err)
 			return tables, err
 		}
 
 		err = rows.Err()
 		if err != nil {
-			db.Log.Debug("msg", "Error scanning table structure", "err", err)
+			db.Log.Info("msg", "Error scanning table structure", "err", err)
 			return tables, err
 		}
 
-		table, err = db.getTableDef(tblName)
+		table, err = db.getTableDef(tableName)
 		if err != nil {
 			return tables, err
 		}
 
-		tables[tblMap] = table
+		tables[eventName] = table
 	}
+
 	return tables, nil
-}
-
-// getUpsertParams builds parameters in preparation for an upsert query
-func getUpsertParams(upsertQuery types.UpsertQuery, row types.EventDataRow) ([]interface{}, string, error) {
-	pointers := make([]interface{}, upsertQuery.Length)
-	containers := make([]sql.NullString, upsertQuery.Length)
-
-	for colName, col := range upsertQuery.Columns {
-		// interface=data
-		pointers[col.InsPosition] = &containers[col.InsPosition]
-		if col.UpdPosition > 0 {
-			pointers[col.UpdPosition] = &containers[col.UpdPosition]
-		}
-
-		// build parameter list
-		if value, ok := row[colName]; ok {
-			// column found (not null)
-			containers[col.InsPosition] = sql.NullString{String: value, Valid: true}
-
-			// if column is not PK
-			if col.UpdPosition > 0 {
-				containers[col.UpdPosition] = sql.NullString{String: value, Valid: true}
-			}
-		} else if col.UpdPosition > 0 {
-			// column not found and is not PK (null)
-			containers[col.InsPosition].Valid = false
-			containers[col.UpdPosition].Valid = false
-		} else {
-			// column not found is PK
-			return nil, "", fmt.Errorf("error null primary key for column %s", colName)
-		}
-	}
-
-	return pointers, fmt.Sprintf("%v", containers), nil
 }
 
 // clean queries from tabs, spaces  and returns
@@ -402,4 +510,28 @@ func clean(parameter string) string {
 func safe(parameter string) string {
 	replacer := strings.NewReplacer(";", "", ",", "")
 	return replacer.Replace(parameter)
+}
+
+//getJSON returns marshaled json from JSON single column
+func (db *SQLDB) getJSON(JSON interface{}) ([]byte, error) {
+	if JSON != nil {
+		return json.Marshal(JSON)
+	}
+	return json.Marshal("")
+}
+
+//getJSONFromValues returns marshaled json from query values
+func (db *SQLDB) getJSONFromValues(values []interface{}) ([]byte, error) {
+	if values != nil {
+		return json.Marshal(values)
+	}
+	return json.Marshal("")
+}
+
+//getValuesFromJSON returns query values from unmarshaled JSON column
+func (db *SQLDB) getValuesFromJSON(JSON string) ([]interface{}, error) {
+	pointers := make([]interface{}, 0)
+	bytes := []byte(JSON)
+	err := json.Unmarshal(bytes, &pointers)
+	return pointers, err
 }

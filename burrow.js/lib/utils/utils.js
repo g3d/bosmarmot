@@ -9,44 +9,8 @@
 var BigNumber = require('bignumber.js')
 var utf8 = require('utf8')
 
-const G = require('g-functions')
-const generic = require('@nodeguy/generic')
-const _ = generic._
-const R = require('ramda')
-const is = require('@nodeguy/type').is
-// Convert Burrow types to Web3 types.
-const burrowToWeb3 = generic.function()
-
-burrowToWeb3.method(_,
-  R.identity
-)
-
-burrowToWeb3.method([is(Object)],
-  G.map(burrowToWeb3)
-)
-
-// https://github.com/hyperledger/burrow/blob/ba74718e702cfb781869d5866bd792a38289e8e7/docs/specs/api.md#numbers-and-strings
-burrowToWeb3.method([/^[0-9A-F]+$/i],
-  ([string]) =>
-    '0x' + string
-)
-
-// Convert Web3 types to Burrow types.
-const web3ToBurrow = generic.function()
-
-web3ToBurrow.method(_,
-  R.identity
-)
-
-web3ToBurrow.method([is(Object)],
-  G.map(web3ToBurrow)
-)
-
-// https://github.com/ethereum/wiki/wiki/JSON-RPC#hex-value-encoding
-web3ToBurrow.method([/^0x[0-9A-F]*$/i],
-  ([hex]) =>
-    hex.slice(2)
-)
+const coder = require('ethereumjs-abi')
+const sha3 = require('./sha3')
 
 /**
  * Should be called to pad string to expected length
@@ -466,9 +430,26 @@ var isJson = function (str) {
   }
 }
 
+var encode = function (abi, functionName, args) {
+  var functions = abi.filter(function (json) {
+    return (json.type === 'function' && json.name === functionName)
+  })
+
+  if (functions.length === 0) {
+    throw new Error('Function name: ' + functionName + ' not found in abi')
+  } else if (functions.length > 1) {
+    throw new Error('Function name: ' + functionName + ' is overloaded, Overloading is not supported')
+  } else {
+    var name = transformToFullName(functions[0])
+    var functionSig = sha3(name).slice(0, 8)
+    var types = functions[0].inputs.map(function (arg) {
+      return arg.type
+    })
+    return functionSig + coder.rawEncode(types, args)
+  }
+}
+
 module.exports = {
-  burrowToWeb3: burrowToWeb3,
-  web3ToBurrow: web3ToBurrow,
   toHex: toHex,
   padLeft: padLeft,
   padRight: padRight,
@@ -492,5 +473,6 @@ module.exports = {
   isArray: isArray,
   isJson: isJson,
   fromUtf8: fromUtf8,
-  toUtf8: toUtf8
+  toUtf8: toUtf8,
+  encode: encode
 }

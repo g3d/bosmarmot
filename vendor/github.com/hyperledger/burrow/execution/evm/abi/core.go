@@ -1,9 +1,7 @@
 package abi
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 
@@ -15,6 +13,16 @@ type Variable struct {
 	Name  string
 	Value string
 }
+
+func init() {
+	var err error
+	RevertAbi, err = ReadAbiSpec([]byte(`[{"name":"Error","type":"function","outputs":[{"type":"string"}],"inputs":[{"type":"string"}]}]`))
+	if err != nil {
+		panic(fmt.Sprintf("internal error: failed to build revert abi: %v", err))
+	}
+}
+
+var RevertAbi *AbiSpec
 
 func ReadAbiFormulateCallFile(abiLocation, binPath, funcName string, args []string) ([]byte, error) {
 	abiSpecBytes, err := readAbi(binPath, abiLocation)
@@ -136,16 +144,10 @@ func readAbi(root, contract string) (string, error) {
 		}
 	}
 	log.WithField("abifile", p).Debug("Found ABI")
-	b, err := ioutil.ReadFile(p)
+	sol, err := compile.LoadSolidityContract(p)
 	if err != nil {
 		return "", err
 	}
-	sol := compile.SolidityOutputContract{}
-	err = json.Unmarshal(b, &sol)
-	if err != nil {
-		return "", err
-	}
-
 	return string(sol.Abi), nil
 }
 

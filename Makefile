@@ -132,6 +132,13 @@ bin/burrow: ./tests/scripts/deps/burrow.sh
 
 # Build all the things
 
+.PHONY: solidity
+solidity: vent/test/EventsTest.sol.go
+
+# Solidity fixtures
+%.sol.go: %.sol
+	@go run ./vendor/github.com/hyperledger/burrow/deploy/compile/solgo/main.go $^
+
 # Build binaries for all architectures
 .PHONY: build_dist
 build_dist:
@@ -144,7 +151,7 @@ build_ci: check test build
 # Tag the current HEAD commit with the current release defined in
 # ./release/release.go
 .PHONY: tag_release
-tag_release: test check 
+tag_release: test check
 	@tests/scripts/tag_release.sh
 
 # If the checked out commit is tagged with a version then release to github

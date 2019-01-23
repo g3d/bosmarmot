@@ -18,13 +18,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/tendermint/tendermint/crypto/tmhash"
+
 	"github.com/hyperledger/burrow/acm"
-	"github.com/hyperledger/burrow/acm/state"
 	"github.com/hyperledger/burrow/binary"
 	"github.com/hyperledger/burrow/crypto"
 	"github.com/hyperledger/burrow/event/query"
 	"github.com/hyperledger/burrow/txs/payload"
-	"golang.org/x/crypto/ripemd160"
 )
 
 // Tx is the canonical object that we serialise to produce the SignBytes that we sign
@@ -75,10 +75,6 @@ func (tx *Tx) SignBytes() ([]byte, error) {
 		return nil, fmt.Errorf("could not generate canonical SignBytes for Payload %v: %v", tx.Payload, err)
 	}
 	return bs, nil
-}
-
-func (tx *Tx) ValidateInputs(getter state.AccountGetter) error {
-	return payload.ValidateInputs(getter, tx.GetInputs())
 }
 
 // Serialisation intermediate for switching on type
@@ -168,7 +164,7 @@ func (tx *Tx) String() string {
 
 // Regenerate the Tx hash if it has been mutated or as called by Hash() in first instance
 func (tx *Tx) Rehash() []byte {
-	hasher := ripemd160.New()
+	hasher := tmhash.New()
 	hasher.Write(tx.MustSignBytes())
 	tx.txHash = hasher.Sum(nil)
 	return tx.txHash
@@ -209,4 +205,29 @@ func DecodeReceipt(bs []byte) (*Receipt, error) {
 
 func (receipt *Receipt) Encode() ([]byte, error) {
 	return cdc.MarshalBinary(receipt)
+}
+
+func EnvelopeFromAny(chainID string, p *payload.Any) *Envelope {
+	if p.CallTx != nil {
+		return Enclose(chainID, p.CallTx)
+	}
+	if p.SendTx != nil {
+		return Enclose(chainID, p.SendTx)
+	}
+	if p.NameTx != nil {
+		return Enclose(chainID, p.NameTx)
+	}
+	if p.PermsTx != nil {
+		return Enclose(chainID, p.PermsTx)
+	}
+	if p.GovTx != nil {
+		return Enclose(chainID, p.GovTx)
+	}
+	if p.ProposalTx != nil {
+		return Enclose(chainID, p.ProposalTx)
+	}
+	if p.BatchTx != nil {
+		return Enclose(chainID, p.BatchTx)
+	}
+	return nil
 }

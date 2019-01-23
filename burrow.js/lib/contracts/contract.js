@@ -37,7 +37,7 @@ var addFunctionsToContract = function (contract) {
   contract.abi.filter(function (json) {
     return (json.type === 'function' || json.type === 'constructor')
   }).forEach(function (json) {
-    let {displayName, typeName, call} = SolidityFunction(json)
+    let {displayName, typeName, call, encode, decode} = SolidityFunction(json)
 
     if (json.type === 'constructor') {
       contract._constructor = call.bind(contract, false, '')
@@ -48,6 +48,9 @@ var addFunctionsToContract = function (contract) {
       // These allow the interface to be used for a generic contract of this type
       execute.at = call.bind(contract, json.constant)
       execute.atSim = call.bind(contract, true)
+
+      execute.encode = encode.bind(contract)
+      execute.decode = decode.bind(contract)
 
       // Attach to the contract object
       if (!contract[displayName]) {

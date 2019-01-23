@@ -21,6 +21,8 @@ type Ring struct {
 	head int64
 	// Number of buckets
 	size int64
+	// Number of buckets populated
+	populated int64
 }
 
 var big1 = big.NewInt(1)
@@ -67,7 +69,7 @@ func (vc *Ring) Resultant(index int64) *Set {
 	i := vc.index(index)
 	cum := CopyTrim(vc.cum[i])
 	vc.delta[i].Iterate(func(id crypto.Addressable, power *big.Int) (stop bool) {
-		cum.AlterPower(id.PublicKey(), power)
+		cum.AlterPower(id.GetPublicKey(), power)
 		return
 	})
 	return cum
@@ -87,7 +89,7 @@ func (vc *Ring) AlterPower(id crypto.PublicKey, power *big.Int) (*big.Int, error
 			"does not", power)
 	}
 	// if flow > maxflow then we cannot alter the power
-	flow := vc.Flow(id.Address(), power)
+	flow := vc.Flow(id.GetAddress(), power)
 	maxFlow := vc.MaxFlow()
 	// Set flow for this id to update flow.totalPower (total flow) for comparison below, keep track of flow for each id
 	// so that we only count flow once for each id
@@ -95,13 +97,13 @@ func (vc *Ring) AlterPower(id crypto.PublicKey, power *big.Int) (*big.Int, error
 	// The totalPower of the Flow Set is the absolute value of all power changes made so far
 	if vc.flow.totalPower.Cmp(maxFlow) == 1 {
 		// Reset flow to previous value to undo update above
-		prevFlow := vc.Flow(id.Address(), vc.Head().Power(id.Address()))
+		prevFlow := vc.Flow(id.GetAddress(), vc.Head().Power(id.GetAddress()))
 		vc.flow.ChangePower(id, prevFlow)
 		allowable := new(big.Int).Sub(maxFlow, vc.flow.totalPower)
 		return nil, fmt.Errorf("cannot change validator power of %v from %v to %v because that would result in a flow "+
 			"greater than or equal to 1/3 of total power for the next commit: flow induced by change: %v, "+
 			"current total flow: %v/%v (cumulative/max), remaining allowable flow: %v",
-			id.Address(), vc.Cum().Power(id.Address()), power, flow, vc.flow.totalPower, maxFlow, allowable)
+			id.GetAddress(), vc.Cum().Power(id.GetAddress()), power, flow, vc.flow.totalPower, maxFlow, allowable)
 	}
 	// Add to total power
 	vc.Head().ChangePower(id, power)
@@ -158,6 +160,9 @@ func (vc *Ring) Rotate() (totalPowerChange *big.Int, totalFlow *big.Int, err err
 	vc.flow = NewSet()
 	// Subtract the previous bucket total power so we can add on the current buckets power after this
 	totalPowerChange = new(big.Int).Sub(vc.Cum().TotalPower(), vc.cum[vc.index(-1)].TotalPower())
+	if vc.populated < vc.size {
+		vc.populated++
+	}
 	return
 }
 
@@ -165,8 +170,11 @@ func (vc *Ring) CurrentSet() *Set {
 	return vc.cum[vc.head]
 }
 
-func (vc *Ring) PreviousSet() *Set {
-	return vc.cum[vc.index(-1)]
+func (vc *Ring) PreviousSet(delay int64) *Set {
+	if delay > vc.populated {
+		delay = vc.populated
+	}
+	return vc.cum[vc.index(-delay)]
 }
 
 func (vc *Ring) Cum() *Set {

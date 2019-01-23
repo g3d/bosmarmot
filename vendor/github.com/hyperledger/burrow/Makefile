@@ -78,6 +78,7 @@ protobuf_deps:
 # Implicit compile rule for GRPC/proto files (note since pb.go files no longer generated
 # in same directory as proto file this just regenerates everything
 %.pb.go: %.proto
+	cp -a vendor/github.com/gogo/protobuf/gogoproto/gogo.proto protobuf/github.com/gogo/protobuf/gogoproto/gogo.proto
 	protoc -I protobuf -I vendor $< --gogo_out=plugins=grpc:${GOPATH}/src
 
 .PHONY: protobuf
@@ -125,7 +126,8 @@ build_race:	check build_race_db
 .PHONY: build_burrow
 build_burrow: commit_hash
 	go build -ldflags "-extldflags '-static' \
-	-X github.com/hyperledger/burrow/project.commit=$(shell cat commit_hash.txt)" \
+	-X github.com/hyperledger/burrow/project.commit=$(shell cat commit_hash.txt) \
+	-X github.com/hyperledger/burrow/project.date=$(shell date -I)" \
 	-o ${REPO}/bin/burrow ./cmd/burrow
 
 .PHONY: install_burrow
@@ -154,9 +156,10 @@ docker_build: check commit_hash
 
 ### Testing github.com/hyperledger/burrow
 
+
 # Solidity fixtures
-%.sol.go: %.sol scripts/solc_compile_go.sh
-	scripts/solc_compile_go.sh $< $@
+%.sol.go: %.sol
+	@go run ./deploy/compile/solgo/main.go $^
 
 .PHONY: solidity
 solidity: $(SOLIDITY_GO_FILES)

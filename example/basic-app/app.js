@@ -12,8 +12,8 @@ const accountFile = 'account.json'
 // Port to run example on locally
 const exampleAppPort = 3000
 
-function slurp (file) {
-  return JSON.parse(fs.readFileSync(file, 'utf8'))
+function slurp(file) {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
 }
 
 // Grab the account file that is expected to have 'Address' field
@@ -37,33 +37,54 @@ app.use(bodyParser.json())
 
 // Some helpers for parsing/validating input
 let asInteger = value => new Promise((resolve, reject) =>
-  (i => isNaN(i) ? reject(`${value} is ${typeof value} not integer`) : resolve(i))(parseInt(value)))
+    (i => isNaN(i) ? reject(`${value} is ${typeof value} not integer`) : resolve(i))(parseInt(value)))
 
 let param = (obj, prop) => new Promise((resolve, reject) =>
-  prop in obj ? resolve(obj[prop]) : reject(`expected key '${prop}' in ${JSON.stringify(obj)}`))
+    prop in obj ? resolve(obj[prop]) : reject(`expected key '${prop}' in ${JSON.stringify(obj)}`))
 
-let handlerError = err => {console.log(err); return err.toString()}
+let handleError = err => {
+    console.log(err);
+    return err.toString()
+}
 
 // We define some method endpoints
 // Get the value from the contract by calling the Solidity 'get' method
 app.get('/', (req, res) => store.get()
-  .then(ret => res.send(ret.values))
-  .catch(err => res.send(handlerError(err))))
+    .then(ret => res.send(ret.values))
+    .catch(err => res.send(handleError(err))))
 
 // Sets the value by accepting a value in HTTP POST data and calling the Solidity 'set' method
 app.post('/', (req, res) => param(req.body, 'value')
-  .then(value => asInteger(value))
-  .then(value => store.set(value).then(() => value))
-  .then(value => res.send({value: value, success: true}))
-  .catch(err => res.send(handlerError(err))))
+    .then(value => asInteger(value))
+    .then(value => store.set(value).then(() => value))
+    .then(value => res.send({value: value, success: true}))
+    .catch(err => res.send(handleError(err))))
 
 // Sets a value by HTTP POSTing to the value you expect to be stored encoded in the URL - so that the value can be
 // updated atomically
 app.post('/:test', (req, res) => param(req.body, 'value')
-  .then(value => Promise.all([asInteger(req.params.test), asInteger(value)]))
-  .then(([test, value]) => store.testAndSet(test, value))
-  .then(ret => res.send(ret.values))
-  .catch(err => res.send(handlerError(err))))
+    .then(value => Promise.all([asInteger(req.params.test), asInteger(value)]))
+    .then(([test, value]) => store.testAndSet(test, value))
+    .then(ret => res.send(ret.values))
+    .catch(err => res.send(handleError(err))))
+
+// Send a little value to an account which has the effect of creating that account if it does not exist
+app.post('/send/:recipient', (req, res) => param(req.body, 'amount')
+    .then(amount =>
+        chain.transact.SendTxSync(
+            {
+                Inputs: [{
+                    Address: Buffer.from(account.Address, 'hex'),
+                    Amount: amount
+                }],
+                Outputs: [{
+                    Address: Buffer.from(req.params.recipient, 'hex'),
+                    Amount: amount
+                }]
+            }))
+    .then(txe => res.send({txHash: txe.TxHash.toString('hex'), success: true}))
+    .catch(err => res.send(handleError(err))))
+
 
 const url = `http://127.0.0.1:${exampleAppPort}`
 

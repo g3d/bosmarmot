@@ -16,11 +16,15 @@
 # overriding here because of IAVL
 [[override]]
   name = "github.com/tendermint/tendermint"
-  version = "=0.23.0"
+  version = "=0.24.0"
+
+[[override]]
+  name = "github.com/tendermint/go-amino"
+  version = "^0.12.0-rc0"
 
 [[constraint]]
   name = "github.com/tendermint/iavl"
-  version = "=0.10.0"
+  version = "=0.11.0"
 
 # Haven't made a release since 2016.
 [[constraint]]
@@ -30,6 +34,16 @@
 [[constraint]]
   name = "golang.org/x/net"
   revision = "292b43bbf7cb8d35ddf40f8d5100ef3837cced3f"
+
+[[override]]
+  name = "github.com/gogo/protobuf"
+  branch = "master"
+
+# v1.1.0 breaks load_package_test.go
+[[override]]
+  name = "github.com/mitchellh/mapstructure"
+  revision = "v1.0.0"
+
 #
 #[[override]]
 #  name = "github.com/gogo/protobuf"

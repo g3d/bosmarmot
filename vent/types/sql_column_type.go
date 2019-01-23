@@ -12,9 +12,12 @@ const (
 	SQLColumnTypeText
 	SQLColumnTypeVarchar
 	SQLColumnTypeTimeStamp
+	SQLColumnTypeNumeric
+	SQLColumnTypeJSON
+	SQLColumnTypeBigInt
 )
 
 // IsNumeric determines if an sqlColumnType is numeric
 func (sqlColumnType SQLColumnType) IsNumeric() bool {
-	return sqlColumnType == SQLColumnTypeInt || sqlColumnType == SQLColumnTypeSerial
+	return sqlColumnType == SQLColumnTypeInt || sqlColumnType == SQLColumnTypeSerial || sqlColumnType == SQLColumnTypeNumeric || sqlColumnType == SQLColumnTypeBigInt
 }

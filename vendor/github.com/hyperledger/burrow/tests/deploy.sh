@@ -29,13 +29,11 @@ goto_base(){
 
 run_test(){
   # Run the jobs test
-  (
   echo ""
   echo -e "Testing $burrow_bin jobs using fixture =>\t$1"
   goto_base
 
   cd $1
-  echo "PWD: $PWD"
   cat readme.md
   echo
 
@@ -46,7 +44,6 @@ run_test(){
   echo "executing deploy with command line:"
   echo "$deploy_cmd"
   eval "${deploy_cmd}"
-  )
 }
 
 perform_tests(){

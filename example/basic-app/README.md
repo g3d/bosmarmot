@@ -74,3 +74,14 @@ Note: [httpie](https://httpie.org/) is a useful tool that makes POSTing to JSON 
   $ http 127.0.0.1:3000/2000 value=30
   $ http 127.0.0.1:3000
 ```
+
+## Additional endpoints
+
+### Sending value and creating accounts
+
+An endpoint is provided at `/send` for sending value from the default input account (defined in account.json after making the chain) that can be used with:
+
+```shell
+# Send 1000 units of native token to D1293FE65A071A9DB539D64858F0A3D4BCAA2EBA
+  http :3000/send/D1293FE65A071A9DB539D64858F0A3D4BCAA2EBA amount=1000
+```

@@ -39,7 +39,7 @@ func Deploy(output Output) func(cmd *cli.Cmd) {
 		defaultGasOpt := cmd.StringOpt("g gas", "1111111111",
 			"default gas to use; can be overridden for any single job")
 
-		jobsOpt := cmd.IntOpt("j jobs", 8,
+		jobsOpt := cmd.IntOpt("j jobs", 2,
 			"default number of concurrent solidity compilers to run")
 
 		addressOpt := cmd.StringOpt("a address", "",
@@ -54,12 +54,17 @@ func Deploy(output Output) func(cmd *cli.Cmd) {
 
 		debugOpt := cmd.BoolOpt("d debug", false, "debug level output")
 
-		cmd.Action = func() {
-			do := new(def.Packages)
+		proposalVerify := cmd.BoolOpt("proposal-verify", false, "Verify any proposal, do NOT create new proposal or vote")
 
-			do.ChainURL = *chainUrlOpt
-			do.Signer = *signerOpt
-			do.MempoolSigning = *mempoolSigningOpt
+		proposalVote := cmd.BoolOpt("proposal-vote", false, "Vot for proposal, do NOT create new proposal")
+
+		cmd.Action = func() {
+			do := new(def.DeployArgs)
+
+			if *proposalVerify && *proposalVote {
+				output.Fatalf("Cannot combine --proposal-verify and --proposal-vote")
+			}
+
 			do.Path = *pathOpt
 			do.DefaultOutput = *defaultOutputOpt
 			do.YAMLPath = *yamlPathOpt
@@ -72,6 +77,8 @@ func Deploy(output Output) func(cmd *cli.Cmd) {
 			do.Verbose = *verboseOpt
 			do.Debug = *debugOpt
 			do.Jobs = *jobsOpt
+			do.ProposeVerify = *proposalVerify
+			do.ProposeVote = *proposalVote
 			log.SetFormatter(new(PlainFormatter))
 			log.SetLevel(log.WarnLevel)
 			if do.Verbose {
@@ -79,7 +86,9 @@ func Deploy(output Output) func(cmd *cli.Cmd) {
 			} else if do.Debug {
 				log.SetLevel(log.DebugLevel)
 			}
-			util.IfExit(pkgs.RunPackage(do))
+			client := def.NewClient(*chainUrlOpt, *signerOpt, *mempoolSigningOpt)
+
+			util.IfExit(pkgs.RunPackage(do, client))
 		}
 	}
 }

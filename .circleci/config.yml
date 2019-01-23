@@ -1,4 +1,4 @@
-# Some resuable sections, note the top-level keys 'defaults' and 'tag_filters'
+# Some reusable sections, note the top-level keys 'defaults' and 'tag_filters'
 # have no special meaning, they just exist so I can alias them and import them
 # in later blocks
 defaults: &defaults
@@ -9,6 +9,9 @@ defaults: &defaults
 tag_filters: &tags_filters
   tags:
     only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+
+setup_docker: &setup_docker
+  version: 17.06.1-ce
 
 # Start of CircleCI 2.0 config
 version: 2
@@ -28,7 +31,7 @@ jobs:
       environment:
         POSTGRES_USER: user
         POSTGRES_PASSWORD: pass
-        POSTGRES_DB: bosmarmot
+        POSTGRES_DB: vent
 
     steps:
       - checkout
@@ -59,6 +62,21 @@ jobs:
       - run: cd legacy-db.js && npm publish
       - run: cd legacy-contracts.js && npm publish
 
+  publish_vent:
+    working_directory: /go/src/github.com/monax/bosmarmot
+    docker:
+      - image: hyperledger/burrow:ci
+    steps:
+      - checkout
+      - setup_remote_docker:
+          <<: *setup_docker
+      - run:
+          name: Build vent image
+          command: |
+            docker login -u ${DOCKER_USER} -p ${DOCKER_PASS} quay.io
+            docker build -t quay.io/monax/vent:$CIRCLE_BRANCH -f vent/Dockerfile .
+            docker push quay.io/monax/vent:$CIRCLE_BRANCH
+
 
 workflows:
   version: 2
@@ -86,3 +104,13 @@ workflows:
             <<: *tags_filters
             branches:
               ignore: /.*/
+
+      - publish_vent:
+          requires:
+            - test_integration
+            - ensure_vendor
+          filters:
+            branches:
+              only:
+                - master
+                - develop

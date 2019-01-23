@@ -1,7 +1,7 @@
 {
   "name": "@monax/burrow",
   "description": "Javascript library that calls a Hyperledger Burrow server over rpc.",
-  "version": "0.20.4",
+  "version": "0.23.0",
   "author": {
     "name": "Dennis Mckinnon"
   },
@@ -10,16 +10,12 @@
   },
   "dependencies": {
     "@grpc/proto-loader": "^0.3.0",
-    "@nodeguy/generic": "3.0.0",
-    "@nodeguy/type": "0.2.0",
     "bignumber.js": "github:debris/bignumber.js#94d7146671b9719e00a09c29b01a691bc85048c2",
     "crypto-js": "3.1.4",
-    "g-functions": "0.3.0",
-    "grpc": "^1.12.2",
+    "ethereumjs-abi": "^0.6.5",
+    "grpc": "^1.16.1",
     "protobufjs": "^6.8.6",
-    "ramda": "0.23.0",
-    "utf8": "2.1.2",
-    "web3": "0.18.4"
+    "utf8": "2.1.2"
   },
   "devDependencies": {
     "fs-extra": "^5.0.0",
